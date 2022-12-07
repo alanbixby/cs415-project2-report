@@ -19,6 +19,10 @@ def convert_team_to_index(team_name: str) -> str:
     return team_name.lower().replace(" ", "-")
 
 
+window_before = 2
+window_after = 2
+resample_rate = "90T"
+
 reddit_lookup = {
     "buffalo-bills": "buffalobills",
     "miami-dolphins": "miamidolphins",
@@ -54,7 +58,7 @@ reddit_lookup = {
     "seattle-seahawks": "Seahawks",
 }
 
-client: MongoClient[Dict[str, Any]] = MongoClient("mongodb://172.22.48.1:27017")
+client: MongoClient[Dict[str, Any]] = MongoClient("mongodb://172.27.80.1:27017")
 db = client["cs415_production"]
 games = list(
     db["nfl_games"].find(
@@ -82,8 +86,8 @@ for game in games:
             {
                 "context_annotations.entity.id": {"$in": home_team_entitlement_ids},
                 "created_at": {
-                    "$gte": game["timestamp"] - timedelta(days=11),
-                    "$lt": game["timestamp"] + timedelta(days=3),
+                    "$gte": game["timestamp"] - timedelta(days=window_before),
+                    "$lt": game["timestamp"] + timedelta(days=window_after),
                 },
             }
         )
@@ -96,7 +100,11 @@ for game in games:
         },
         index=[d["created_at"] for d in home_tweets],
     )
-    home_tweet_df = home_tweet_df.resample("H").mean().fillna(0)
+
+    if len(home_tweet_df) == 0:
+        continue
+    
+    home_tweet_df = home_tweet_df.resample(resample_rate).mean().fillna(0)
 
     # ---
 
@@ -105,8 +113,8 @@ for game in games:
             {
                 "subreddit": reddit_lookup[convert_team_to_index(game["home_team"])],
                 "created_at": {
-                    "$gte": game["timestamp"] - timedelta(days=11),
-                    "$lt": game["timestamp"] + timedelta(days=3),
+                    "$gte": game["timestamp"] - timedelta(days=window_before),
+                    "$lt": game["timestamp"] + timedelta(days=window_after),
                 },
             }
         )
@@ -118,7 +126,7 @@ for game in games:
     #             "subreddit": reddit_lookup[convert_team_to_index(game["home_team"])],
     #             "created_at": {
     #                 "$gte": game["timestamp"] - timedelta(days=7),
-    #                 "$lt": game["timestamp"] + timedelta(days=3),
+    #                 "$lt": game["timestamp"] + timedelta(days=window_after),
     #             },
     #         }
     #     )
@@ -135,7 +143,7 @@ for game in games:
         index=[d["created_at"] for d in home_reddit],
     )
     print(home_reddit_df)
-    home_reddit_df = home_reddit_df.resample("H").mean().fillna(0)
+    home_reddit_df = home_reddit_df.resample(resample_rate).mean().fillna(0)
 
     # %store home_df
 
@@ -149,8 +157,8 @@ for game in games:
             {
                 "context_annotations.entity.id": {"$in": away_team_entitlement_ids},
                 "created_at": {
-                    "$gte": game["timestamp"] - timedelta(days=11),
-                    "$lt": game["timestamp"] + timedelta(days=3),
+                    "$gte": game["timestamp"] - timedelta(days=window_before),
+                    "$lt": game["timestamp"] + timedelta(days=window_after),
                 },
             }
         )
@@ -163,7 +171,11 @@ for game in games:
         },
         index=[d["created_at"] for d in away_tweets],
     )
-    away_tweet_df = away_tweet_df.resample("H").mean().fillna(0)
+    
+    if len(away_tweet_df) == 0:
+        continue
+
+    away_tweet_df = away_tweet_df.resample(resample_rate).mean().fillna(0)
 
     # ---
 
@@ -172,8 +184,8 @@ for game in games:
             {
                 "subreddit": reddit_lookup[convert_team_to_index(game["away_team"])],
                 "created_at": {
-                    "$gte": game["timestamp"] - timedelta(days=11),
-                    "$lt": game["timestamp"] + timedelta(days=3),
+                    "$gte": game["timestamp"] - timedelta(days=window_before),
+                    "$lt": game["timestamp"] + timedelta(days=window_after),
                 },
             }
         )
@@ -185,7 +197,7 @@ for game in games:
     #             "subreddit": reddit_lookup[convert_team_to_index(game["home_team"])],
     #             "created_at": {
     #                 "$gte": game["timestamp"] - timedelta(days=7),
-    #                 "$lt": game["timestamp"] + timedelta(days=3),
+    #                 "$lt": game["timestamp"] + timedelta(days=window_after),
     #             },
     #         }
     #     )
@@ -196,7 +208,7 @@ for game in games:
     #             "subreddit": reddit_lookup[convert_team_to_index(game["away_team"])],
     #             "created_at": {
     #                 "$gte": game["timestamp"] - timedelta(days=7),
-    #                 "$lt": game["timestamp"] + timedelta(days=3),
+    #                 "$lt": game["timestamp"] + timedelta(days=window_after),
     #             },
     #         }
     #     )
@@ -212,24 +224,24 @@ for game in games:
         },
         index=[d["created_at"] for d in away_reddit],
     )
-    away_reddit_df = away_reddit_df.resample("H").mean().fillna(0)
+    away_reddit_df = away_reddit_df.resample(resample_rate).mean().fillna(0)
 
     # %store away_df
 
-    sns.lineplot(
-        away_tweet_df["polarity"],
-        color="blue",
-        linestyle=":",
-        label=game["away_team"] + " : Twitter"
-        # + (game["winner"] == game["away_team"] and " [WINNER]" or " [LOSER]"),
-    )
-    sns.lineplot(
-        home_tweet_df["polarity"],
-        color="red",
-        linestyle=":",
-        label=game["home_team"] + " : Twitter"
-        # + (game["winner"] == game["home_team"] and " [WINNER] (" or " [LOSER]"),
-    )
+    # sns.lineplot(
+    #     away_tweet_df["polarity"],
+    #     color="blue",
+    #     linestyle=":",
+    #     label=game["away_team"] + " : Twitter"
+    #     # + (game["winner"] == game["away_team"] and " [WINNER]" or " [LOSER]"),
+    # )
+    # sns.lineplot(
+    #     home_tweet_df["polarity"],
+    #     color="red",
+    #     linestyle=":",
+    #     label=game["home_team"] + " : Twitter"
+    #     # + (game["winner"] == game["home_team"] and " [WINNER] (" or " [LOSER]"),
+    # )
     sns.lineplot(
         away_reddit_df["polarity"],
         color="blue",
@@ -266,7 +278,7 @@ for game in games:
     plt.legend(bbox_to_anchor=(1.04, 0.5), loc="center left", borderaxespad=0)
 
     plt.savefig(
-        f"sentiment/{convert_team_to_index(game['home_team'])}_{convert_team_to_index(game['away_team'])}.png",
+        f"sentiment/tighter-2day/reddit/{convert_team_to_index(game['home_team'])}_{convert_team_to_index(game['away_team'])}.png",
         bbox_inches="tight",
     )
     plt.show()
